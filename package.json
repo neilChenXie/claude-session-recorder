@@ -1,6 +1,6 @@
 {
   "name": "claude-session-recorder-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Claude Code plugin for automatic session transcript summarization",
   "type": "module",
   "main": "./dist/summarize.js",
