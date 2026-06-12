@@ -10,7 +10,10 @@
       "name": "claude-session-recorder",
       "description": "Automatically generates Markdown logs of Claude Code session transcripts",
       "version": "1.0.1",
-      "source": ".",
+      "source": {
+        "package": "claude-session-recorder-plugin",
+        "version": "1.0.1"
+      },
       "author": {
         "name": "Chen Xie",
         "email": "chenxie121@gmail.com"
