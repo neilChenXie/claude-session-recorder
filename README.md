@@ -12,17 +12,33 @@ A Claude Code plugin that automatically generates Markdown logs of your session 
 
 ## Installation
 
-### From npm
+### From local directory (for testing)
 
 ```bash
-claude plugin add claude-session-recorder-plugin
+claude plugin add /path/to/claude-session-recorder
 ```
 
-### From GitHub
+### From GitHub (recommended for distribution)
 
 ```bash
-claude plugin add https://github.com/<user>/claude-session-recorder
+claude plugin add https://github.com/chenxie121/claude-session-recorder
 ```
+
+Or via marketplace:
+
+```bash
+claude plugin marketplace add https://github.com/chenxie121/claude-session-recorder
+claude plugin install claude-session-recorder
+```
+
+### From npm (after publishing)
+
+```bash
+claude plugin marketplace add <marketplace-url-containing-this-plugin>
+claude plugin install claude-session-recorder
+```
+
+> Note: There is no direct `claude plugin add <npm-package>` command. npm packages must be listed inside a marketplace.json that users add first.
 
 ## Usage
 

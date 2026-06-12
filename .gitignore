@@ -13,6 +13,9 @@ coverage/
 *.swp
 *.swo
 
+#Agents
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,20 @@
+{
+  "name": "claude-session-recorder",
+  "description": "A Claude Code plugin for automatic session transcript logging in Markdown format",
+  "owner": {
+    "name": "Chen Xie",
+    "email": "chenxie121@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "claude-session-recorder",
+      "description": "Automatically generates Markdown logs of Claude Code session transcripts",
+      "version": "1.0.1",
+      "source": ".",
+      "author": {
+        "name": "Chen Xie",
+        "email": "chenxie121@gmail.com"
+      }
+    }
+  ]
+}
