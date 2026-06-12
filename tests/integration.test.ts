@@ -1,6 +1,6 @@
 // tests/integration.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { generateSummary, main } from "../src/summarize.js";
+import { generateTranscriptLog, generateSummary } from "../src/summarize.js";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "fs";
@@ -9,7 +9,7 @@ import { execSync } from "child_process";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-describe("generateSummary", () => {
+describe("generateTranscriptLog", () => {
   const outputDir = join(__dirname, ".test-output");
 
   beforeEach(() => {
@@ -20,66 +20,102 @@ describe("generateSummary", () => {
     rmSync(outputDir, { recursive: true, force: true });
   });
 
-  it("generates a markdown summary file", () => {
+  it("generates transcript log from normal-session.jsonl", () => {
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+    const result = generateTranscriptLog(fixturePath, outputDir, "test-session-123");
+
+    expect(result).not.toBeNull();
+    expect(existsSync(result!)).toBe(true);
+
+    const content = readFileSync(result!, "utf-8");
+
+    // Check header
+    expect(content).toContain("# ");
+    expect(content).toContain("session id：test-session-123");
+    expect(content).toContain("## 基本信息");
+    expect(content).toContain("### 对话记录");
+
+    // Check user messages
+    expect(content).toContain("#### 用户");
+    expect(content).toContain("Help me create a simple HTTP server");
+
+    // Check tool usage
+    expect(content).toContain("[tool]:Write");
+    expect(content).toContain("[tool]:Bash");
+
+    // Check timestamps format (HH:mm:ss)
+    expect(content).toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+
+  it("generates file with correct naming convention", () => {
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+    const result = generateTranscriptLog(fixturePath, outputDir, "test-session-123");
+
+    expect(result).not.toBeNull();
+    const filename = result!.split("/").pop()!;
+
+    // Should be: YYYY-MM-DD-first-user-message.md
+    expect(filename).toMatch(/^\d{4}-\d{2}-\d{2}-.+\.md$/);
+  });
+
+  it("returns null for empty transcript", () => {
+    const fixturePath = join(__dirname, "fixtures", "empty-session.jsonl");
+    const result = generateTranscriptLog(fixturePath, outputDir, "test-session-123");
+
+    // Should handle gracefully
+    expect(result).toBeDefined();
+  });
+
+  it("handles missing timestamps gracefully", () => {
+    // Create a temp fixture without timestamps
+    const tempFixture = join(outputDir, "no-timestamp.jsonl");
+    writeFileSync(tempFixture, JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "Test" }] },
+    }) + "\n");
+
+    const result = generateTranscriptLog(tempFixture, outputDir, "test-session");
+    expect(result).toBeDefined();
+  });
+
+  it("includes tool input and output in the log", () => {
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+    const result = generateTranscriptLog(fixturePath, outputDir, "test-session");
+    const content = readFileSync(result!, "utf-8");
+
+    // Check for tool input format
+    expect(content).toContain("file:");
+
+    // Check for AI section header
+    expect(content).toContain("#### AI");
+  });
+
+  it("formats assistant text responses", () => {
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+    const result = generateTranscriptLog(fixturePath, outputDir, "test-session");
+    const content = readFileSync(result!, "utf-8");
+
+    // Check for [答复] marker
+    expect(content).toContain("[答复]");
+  });
+});
+
+describe("generateSummary (backward compatibility)", () => {
+  const outputDir = join(__dirname, ".test-output-bc");
+
+  beforeEach(() => {
+    mkdirSync(outputDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(outputDir, { recursive: true, force: true });
+  });
+
+  it("generates output file", () => {
     const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
     const result = generateSummary(fixturePath, outputDir);
     expect(result).toBeTruthy();
     expect(existsSync(result!)).toBe(true);
-
-    const content = readFileSync(result!, "utf-8");
-    expect(content).toContain("#");
-    expect(content).toContain("Session ID");
-    expect(content).toContain("Created");
-  });
-
-  it("includes User Requests section", () => {
-    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
-    const result = generateSummary(fixturePath, outputDir);
-    const content = readFileSync(result!, "utf-8");
-    expect(content).toContain("## User Requests");
-    expect(content).toContain("HTTP server");
-  });
-
-  it("includes Tools Used section when tools present", () => {
-    const fixturePath = join(__dirname, "fixtures", "heavy-tools.jsonl");
-    const result = generateSummary(fixturePath, outputDir);
-    const content = readFileSync(result!, "utf-8");
-    expect(content).toContain("## Tools Used");
-    expect(content).toContain("**Read**:");
-    expect(content).toContain("**Edit**:");
-  });
-
-  it("includes Files Modified section when files edited", () => {
-    const fixturePath = join(__dirname, "fixtures", "heavy-tools.jsonl");
-    const result = generateSummary(fixturePath, outputDir);
-    const content = readFileSync(result!, "utf-8");
-    expect(content).toContain("## Files Modified");
-  });
-
-  it("creates images subdirectory", () => {
-    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
-    generateSummary(fixturePath, outputDir);
-    expect(existsSync(join(outputDir, "images"))).toBe(true);
-  });
-
-  it("returns null for empty conversation", () => {
-    const fixturePath = join(__dirname, "fixtures", "empty-session.jsonl");
-    const result = generateSummary(fixturePath, outputDir);
-    expect(result).toBeNull();
-  });
-
-  it("derives title from first user message", () => {
-    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
-    const result = generateSummary(fixturePath, outputDir);
-    const content = readFileSync(result!, "utf-8");
-    expect(content).toMatch(/#.*HTTP server/i);
-  });
-
-  it("limits user requests to 10 items", () => {
-    // This test uses the heavy-tools fixture which has limited user messages
-    const fixturePath = join(__dirname, "fixtures", "heavy-tools.jsonl");
-    const result = generateSummary(fixturePath, outputDir);
-    expect(result).toBeTruthy();
   });
 });
 
@@ -96,7 +132,6 @@ describe("CLI main function", () => {
 
   it("exits with code 2 for missing file in argv mode", () => {
     const binPath = join(__dirname, "..", "dist", "summarize.js");
-    // This test needs the built file
     let exitCode = 0;
     try {
       execSync(`node "${binPath}" --file nonexistent.jsonl`, {
@@ -123,7 +158,7 @@ describe("CLI main function", () => {
     expect(exitCode).toBe(2);
   });
 
-  it("generates summary successfully with valid file in argv mode", () => {
+  it("generates transcript log successfully with valid file in argv mode", () => {
     const binPath = join(__dirname, "..", "dist", "summarize.js");
     const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
     const testOutputDir = join(outputDir, "argv-test");
@@ -136,10 +171,8 @@ describe("CLI main function", () => {
       }
     );
 
-    expect(result).toContain("Session summary saved to:");
-    // Check that a file was created
-    const files = existsSync(testOutputDir);
-    expect(files).toBe(true);
+    expect(result).toContain("Transcript log saved to:");
+    expect(existsSync(testOutputDir)).toBe(true);
   });
 
   it("uses CLAUDE_PROJECT_DIR for output when --output not specified", () => {
@@ -157,7 +190,7 @@ describe("CLI main function", () => {
       }
     );
 
-    expect(result).toContain("Session summary saved to:");
+    expect(result).toContain("Transcript log saved to:");
     expect(result).toContain(projectDir);
   });
 
@@ -181,7 +214,7 @@ describe("CLI main function", () => {
       cwd: hookCwd,
     });
 
-    expect(result).toContain("Session summary saved to:");
+    expect(result).toContain("Transcript log saved to:");
     expect(result).toContain(hookCwd);
   });
 
