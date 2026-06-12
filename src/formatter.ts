@@ -5,12 +5,16 @@ import { formatTimestamp, formatDateTime, cleanXmlTags } from "./utils.js";
 export function generateFilename(date: string, title: string): string {
   let safeTitle = title;
   if (!safeTitle) {
-    safeTitle = "Claude Code Session";
+    safeTitle = "Claude-Code-Session";
   } else {
     // Truncate to 30 chars
     safeTitle = safeTitle.slice(0, 30);
-    // Replace special characters and whitespace
-    safeTitle = safeTitle.replace(/[/\\:\s]/g, "-");
+    // Replace anything that's not alphanumeric, CJK, or hyphens
+    safeTitle = safeTitle.replace(/[^a-zA-Z0-9一-鿿぀-ヿ가-힯-]/g, "-");
+    // Collapse consecutive hyphens
+    safeTitle = safeTitle.replace(/-+/g, "-");
+    // Strip leading/trailing hyphens
+    safeTitle = safeTitle.replace(/^-+|-+$/g, "");
   }
   return `${date}-${safeTitle}.md`;
 }
@@ -35,7 +39,13 @@ export function extractSessionInfo(
         const text = String((block as Record<string, unknown>).text || "");
         const cleaned = cleanXmlTags(text);
         if (cleaned && cleaned.length >= 5) {
-          title = cleaned.slice(0, 50).replace(/\n/g, " ").trim();
+          // Take first line only
+          let firstLine = cleaned.split("\n")[0].trim();
+          // Strip leading numbering/list markers
+          firstLine = firstLine.replace(/^[-*\d]+[.、)\s]+/, "").trim();
+          // Strip trailing connectors like "包含：", "要求：", "包括："
+          firstLine = firstLine.replace(/[，：].*$/, "").trim();
+          title = firstLine.slice(0, 50).trim() || cleaned.slice(0, 50).replace(/\n/g, " ").trim();
           break;
         }
       }
@@ -53,6 +63,18 @@ export function extractSessionInfo(
     created,
     title,
   };
+}
+
+/**
+ * Determine the minimum number of backticks needed to fence content
+ * without conflicting with existing backtick sequences in the content.
+ * CommonMark rule: fence must be longer than any backtick sequence in the content.
+ */
+function fenceLength(content: string): number {
+  const matches = content.match(/`{3,}/g);
+  if (!matches) return 3;
+  const maxLen = Math.max(...matches.map(s => s.length));
+  return maxLen + 1;
 }
 
 export function formatTranscriptLog(
@@ -74,33 +96,55 @@ export function formatTranscriptLog(
   lines.push("### 对话记录");
   lines.push("");
 
+  // Determine role for each entry: "user" or "ai"
+  type Role = "user" | "ai";
+  function getRole(entry: LogEntry): Role {
+    return entry.type === "user_message" ? "user" : "ai";
+  }
+
+  let currentRole: Role | null = null;
+
   for (const entry of entries) {
+    const role = getRole(entry);
     const ts = formatTimestamp(entry.timestamp);
 
-    if (entry.type === "user_message") {
-      lines.push("#### 用户");
+    // Emit role heading when role changes
+    if (role !== currentRole) {
+      currentRole = role;
+      lines.push(`#### ${role === "user" ? "用户" : "AI"}`);
       lines.push("");
-      lines.push("```");
+    }
+
+    if (entry.type === "user_message") {
+      const f = "`".repeat(fenceLength(entry.content));
+      lines.push(f);
       lines.push(`${ts} ${entry.content}`);
-      lines.push("```");
+      lines.push(f);
+      lines.push("");
+      lines.push("------------------");
       lines.push("");
     } else if (entry.type === "tool_use") {
-      lines.push("#### AI");
-      lines.push("");
+      const combined = `${entry.toolInput || ""}\n${entry.toolOutput || ""}`;
+      const f = "`".repeat(fenceLength(combined));
       lines.push(`${ts} [tool]:${entry.toolName || "Unknown"}`);
-      lines.push("```");
+      lines.push(f);
       lines.push(` ${entry.toolInput || ""}`);
       if (entry.toolOutput) {
         lines.push(` `);
         lines.push(` ${entry.toolOutput}`);
       }
-      lines.push("```");
+      lines.push(f);
+      lines.push("");
+      lines.push("------------------");
       lines.push("");
     } else if (entry.type === "assistant_text") {
+      const f = "`".repeat(fenceLength(entry.content));
       lines.push(`${ts} [答复]`);
-      lines.push("```");
+      lines.push(f);
       lines.push(entry.content);
-      lines.push("```");
+      lines.push(f);
+      lines.push("");
+      lines.push("------------------");
       lines.push("");
     }
   }

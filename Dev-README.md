@@ -5,6 +5,7 @@
 ## 目录
 
 - [项目结构](#项目结构)
+- [模块架构](#模块架构)
 - [开发环境设置](#开发环境设置)
 - [运行脚本与验证输出](#运行脚本与验证输出)
 - [测试](#测试)
@@ -17,25 +18,34 @@
 ```
 claude-session-recorder/
 ├── src/
-│   └── summarize.ts          # 核心源码：JSONL 解析、摘要生成、CLI 入口
+│   ├── summarize.ts          # 主入口：CLI/Hook 双模式、generateTranscriptLog、main()
+│   ├── parser.ts             # JSONL 解析、日志条目提取、工具调用摘要
+│   ├── formatter.ts          # Markdown 输出格式化、文件名生成、会话信息提取
+│   ├── types.ts              # TypeScript 类型定义（JsonlEntry、LogEntry、SessionInfo）
+│   └── utils.ts              # 工具函数（truncate、cleanXmlTags、时间格式化）
 ├── dist/                      # 编译输出目录 (npm 发布)
-│   ├── summarize.js          # 编译后的可执行脚本
-│   └── summarize.d.ts        # TypeScript 类型声明
+│   ├── summarize.js          # 编译后的可执行脚本 (ESM, 含 shebang)
+│   ├── summarize.d.ts        # TypeScript 类型声明
+│   └── summarize.js.map      # Source map
 ├── hooks/
 │   └── hooks.json            # Claude Code 插件 Hook 配置
 ├── skills/
 │   └── summarize-session/
 │       └── skill.md          # Slash command 技能定义
 ├── tests/
-│   ├── summarize.test.ts     # 单元测试
-│   ├── integration.test.ts   # 集成测试
+│   ├── summarize.test.ts     # 主入口单元测试
+│   ├── parser.test.ts        # 解析器单元测试
+│   ├── formatter.test.ts     # 格式化器单元测试
+│   ├── utils.test.ts         # 工具函数单元测试
+│   ├── integration.test.ts   # 端到端集成测试
 │   └── fixtures/             # 测试数据
 │       ├── normal-session.jsonl
 │       ├── invalid-lines.jsonl
 │       ├── empty-session.jsonl
-│       └── heavy-tools.jsonl
-├── conversations/             # 默认输出目录 (生成的摘要存放于此)
-├── docs/                      # 项目文档
+│       ├── heavy-tools.jsonl
+│       ├── 7e146ba1-6c18-4afb-a4ef-e65a40c6b6f7.jsonl
+│       └── conversations/    # 集成测试输出目录
+├── conversations/             # 默认输出目录 (生成的转写记录存放于此)
 ├── package.json              # npm 包配置
 ├── tsconfig.json             # TypeScript 配置
 ├── tsup.config.ts            # tsup 打包配置
@@ -45,14 +55,52 @@ claude-session-recorder/
 └── Dev-README.md             # 本文档
 ```
 
+---
+
+## 模块架构
+
+源码按职责拆分为 5 个模块，依赖关系如下：
+
+```
+summarize.ts (主入口)
+  ├── parser.ts    (JSONL 解析 + 日志条目提取)
+  │     └── types.ts
+  │     └── utils.ts
+  ├── formatter.ts (Markdown 格式化 + 文件名生成)
+  │     └── types.ts
+  │     └── utils.ts
+  ├── types.ts
+  └── utils.ts
+```
+
 ### 核心文件说明
 
-| 文件 | 作用 |
-|------|------|
-| `src/summarize.ts` | 主入口文件，包含 JSONL 解析、对话提取、摘要生成、CLI 和 Hook 双模式 |
-| `hooks/hooks.json` | 定义 `SessionEnd` Hook，在会话结束时自动调用脚本 |
-| `skills/summarize-session/skill.md` | 定义 `/summarize-session` slash command |
-| `dist/summarize.js` | 编译产物，作为 CLI 可执行文件 |
+| 文件 | 职责 | 主要导出 |
+|------|------|----------|
+| `src/types.ts` | 类型定义 | `JsonlEntry`, `ContentBlock`, `LogEntry`, `SessionInfo` |
+| `src/utils.ts` | 通用工具函数 | `truncate()`, `cleanXmlTags()`, `formatTimestamp()`, `formatDate()`, `formatDateTime()` |
+| `src/parser.ts` | 解析层 | `parseJsonl()`, `extractLogEntries()`, `summarizeToolInput()` |
+| `src/formatter.ts` | 格式化层 | `formatTranscriptLog()`, `generateFilename()`, `extractSessionInfo()` |
+| `src/summarize.ts` | 主入口 + CLI | `generateTranscriptLog()`, `main()`, 兼容导出 `generateSummary()`, `extractConversation()` |
+
+### 数据流
+
+```
+JSONL 文件
+  → parseJsonl()          解析为 JsonlEntry[]
+  → extractLogEntries()   提取为 LogEntry[]（含 tool_result 关联）
+  → extractSessionInfo()  提取会话元信息（标题、时间）
+  → formatTranscriptLog() 生成 Markdown 内容
+  → generateFilename()    生成文件名
+  → 写入 .md 文件
+```
+
+### 兼容性
+
+`summarize.ts` 保留了两项兼容导出，供旧代码或外部调用使用：
+
+- `generateSummary(filepath, outputDir)` — 内部调用 `generateTranscriptLog()`
+- `extractConversation(entries)` — 将 `LogEntry[]` 转换为旧 `ConversationTurn[]` 格式
 
 ---
 
@@ -77,7 +125,7 @@ npm install
 npm run build
 ```
 
-构建产物将输出到 `dist/` 目录。
+构建产物将输出到 `dist/` 目录。tsup 配置为 ESM 格式，自动添加 shebang，生成 `.d.ts` 声明和 source map。
 
 ---
 
@@ -100,10 +148,10 @@ node dist/summarize.js tests/fixtures/normal-session.jsonl
 
 **验证输出：**
 
-运行后会在 `conversations/` 或指定的输出目录生成一个 Markdown 文件：
+运行后会在 `conversations/` 或指定的输出目录生成一个 Markdown 文件，文件名格式为 `YYYY-MM-DD-标题.md`：
 
 ```bash
-# 查看生成的摘要
+# 查看生成的转写记录
 cat conversations/*.md
 
 # 或查看自定义输出目录
@@ -114,30 +162,34 @@ cat .tmp/test-output/*.md
 示例输出内容：
 
 ```markdown
-# Help me create a simple HTTP server in Node.js
+# 2026-06-11 10:00:00-Help me create a simple HTTP server
 
-**Session ID:** `normal-session`
-**Created:** 2026-06-11 10:00:00
+## 基本信息
 
----
+* session id：normal-session
+* created：2026-06-11 10:00:00
 
-## User Requests
+### 对话记录
 
-- Help me create a simple HTTP server in Node.js
-- Run the server
+#### 用户
 
-## Tools Used
+```
+10:00:00 Help me create a simple HTTP server in Node.js
+```
 
-- **Write**: /project/server.js: 150 chars
-- **Bash**: node /project/server.js
+#### AI
 
-## Files Modified
+10:01:00 [tool]:Write
+```
+ file: /project/server.js
+```
 
-- `/project/server.js`
+#### AI
 
-## Commands Run
-
-- `node /project/server.js`
+10:05:00 [答复]
+```
+I've created the server file. Now let's run it.
+```
 ```
 
 ### 方式二：Hook 模式（模拟 SessionEnd Hook）
@@ -169,7 +221,7 @@ cat .tmp/hook-test/conversations/*.md
 claude plugin add $(pwd)
 ```
 
-然后进行一段对话，退出 Claude Code 后检查 `conversations/` 目录是否生成了摘要文件。
+然后进行一段对话，退出 Claude Code 后检查 `conversations/` 目录是否生成了转写记录文件。
 
 卸载插件：
 
@@ -199,16 +251,15 @@ npm run test:watch
 npm run typecheck
 ```
 
-### 测试覆盖说明
+### 测试文件说明
 
-测试文件位于 `tests/` 目录：
-
-- `summarize.test.ts` - 单元测试，覆盖：
-  - `parseJsonl()` - JSONL 文件解析
-  - `summarizeToolInput()` - 工具调用摘要生成
-  - `extractConversation()` - 对话内容提取、标签过滤
-
-- `integration.test.ts` - 集成测试，验证端到端摘要生成
+| 文件 | 覆盖内容 |
+|------|----------|
+| `utils.test.ts` | `truncate()`, `cleanXmlTags()`, `formatTimestamp()`, `formatDate()`, `formatDateTime()` |
+| `parser.test.ts` | `parseJsonl()`, `summarizeToolInput()`, `extractLogEntries()` |
+| `formatter.test.ts` | `generateFilename()`, `extractSessionInfo()`, `formatTranscriptLog()` |
+| `summarize.test.ts` | `generateTranscriptLog()`, 兼容函数 `generateSummary()`, `extractConversation()` |
+| `integration.test.ts` | 端到端：JSONL 文件 → Markdown 输出 |
 
 ---
 
@@ -273,6 +324,7 @@ npm install -g claude-session-recorder-plugin
 ```json
 {
   "name": "claude-session-recorder-plugin",
+  "type": "module",
   "bin": {
     "claude-session-recorder": "./dist/summarize.js"
   },
@@ -286,8 +338,9 @@ npm install -g claude-session-recorder-plugin
 }
 ```
 
-- `bin` - 定义可执行命令，安装后可通过 `npx claude-session-recorder` 运行
-- `files` - 指定发布到 npm 的文件，避免打包不必要的文件
+- `type: "module"` — 项目使用 ESM 模块系统
+- `bin` — 定义可执行命令，安装后可通过 `npx claude-session-recorder` 运行
+- `files` — 指定发布到 npm 的文件，避免打包不必要的文件
 
 ---
 
@@ -295,10 +348,10 @@ npm install -g claude-session-recorder-plugin
 
 ### Q: 修改代码后测试没有更新？
 
-确保重新构建：
+测试直接引用 `src/` 下的 TypeScript 源码（Vitest 原生支持），无需手动构建即可运行测试。但如果要验证 CLI 运行效果，需重新构建：
 
 ```bash
-npm run build && npm test
+npm run build && node dist/summarize.js --file tests/fixtures/normal-session.jsonl
 ```
 
 ### Q: Hook 没有触发？
