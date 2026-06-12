@@ -1,0 +1,4 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Help me create a simple HTTP server in Node.js"}]},"timestamp":"2026-06-11T10:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll help you create a simple HTTP server."},{"type":"tool_use","name":"Write","input":{"file_path":"/project/server.js","content":"const http = require('http');\nconst server = http.createServer((req, res) => {\n  res.writeHead(200, {'Content-Type': 'text/plain'});\n  res.end('Hello World');\n});\nserver.listen(3000);"}}]},"timestamp":"2026-06-11T10:00:05Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Run the server"}]},"timestamp":"2026-06-11T10:01:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"node /project/server.js"}}]},"timestamp":"2026-06-11T10:01:05Z"}

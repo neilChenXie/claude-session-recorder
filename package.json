@@ -1,0 +1,44 @@
+{
+  "name": "claude-session-recorder-plugin",
+  "version": "1.0.0",
+  "description": "Claude Code plugin for automatic session transcript summarization",
+  "type": "module",
+  "main": "./dist/summarize.js",
+  "types": "./dist/summarize.d.ts",
+  "bin": {
+    "claude-session-recorder": "./dist/summarize.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "hooks",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "plugin",
+    "session",
+    "transcript",
+    "summary"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}
