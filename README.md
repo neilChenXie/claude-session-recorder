@@ -1,13 +1,14 @@
 # Claude Session Recorder Plugin
 
-A Claude Code plugin that automatically generates Markdown summaries of your session transcripts.
+A Claude Code plugin that automatically generates Markdown logs of your session transcripts — preserving the chronological flow of every conversation.
 
 ## Features
 
-- **Automatic Summarization**: Generates a summary at the end of every Claude Code session via SessionEnd hook
-- **Slash Command**: Use `/summarize-session` to manually generate a summary at any time
+- **Automatic Recording**: Generates a transcript log at the end of every Claude Code session via SessionEnd hook
+- **Slash Command**: Use `/summarize-session` to manually generate a log at any time
 - **Zero Configuration**: Hook auto-registers when the plugin is enabled
-- **Informative Summaries**: Includes user requests, tools used, key responses, files modified, and commands run
+- **Chronological Flow**: Outputs a "流水账" (chronological log) format that preserves the exact order of user messages, tool calls, and AI responses
+- **Smart Formatting**: Adaptive code fencing prevents backtick conflicts; XML tags are stripped for clean output
 
 ## Installation
 
@@ -27,10 +28,10 @@ claude plugin add https://github.com/<user>/claude-session-recorder
 
 ### Automatic (SessionEnd Hook)
 
-Once the plugin is enabled, a summary is automatically generated when you exit Claude Code. The summary is saved to:
+Once the plugin is enabled, a transcript log is automatically generated when you exit Claude Code. The log is saved to:
 
 ```
-<project-root>/conversations/<timestamp>-<title>.md
+<project-root>/conversations/<date>-<title>.md
 ```
 
 ### Manual (Slash Command)
@@ -43,43 +44,63 @@ Use the `/summarize-session` command:
 /summarize-session --output /custom/output/dir
 ```
 
-## Summary Format
+### Standalone CLI
 
-Each summary includes:
+```bash
+node dist/summarize.js --file <jsonl_path> [--output <dir>]
+```
 
-- **Title**: Derived from your first message
-- **Metadata**: Session ID, creation timestamp, project path
-- **User Requests**: Up to 10 user messages
-- **Tools Used**: Up to 20 tool invocations with summaries
-- **Key Assistant Responses**: Up to 8 text responses
-- **Files Modified**: Files touched by Edit or Write tools
-- **Commands Run**: Up to 10 bash commands
+If `--output` is omitted, defaults to `<project>/conversations` (using `CLAUDE_PROJECT_DIR`) or `<jsonl-dir>/conversations`.
 
-## Example Output
+## Log Format
+
+Each log file follows a chronological "流水账" structure:
 
 ```markdown
-# Help me create a HTTP server
+# 2026-06-11 10:00:00-Help me create a HTTP server
 
-**Session ID:** `abc123`
-**Created:** 2026-06-11 10:00:00
-**Project:** `/home/user/my-project`
+## 基本信息
 
----
+* session id：abc123
+* created：2026-06-11 10:00:00
 
-## User Requests
+### 对话记录
 
-- Help me create a simple HTTP server in Node.js
-- Run the server
+#### 用户
 
-## Tools Used
-
-- **Write**: /project/server.js: 150 chars
-- **Bash**: node /project/server.js
-
-## Files Modified
-
-- `/project/server.js`
 ```
+10:00:00 Help me create a simple HTTP server in Node.js
+```
+
+------------------
+
+#### AI
+
+```
+10:01:00 [tool]:Write
+``````
+ file: /project/server.js
+``````
+
+------------------
+
+```
+10:02:00 [答复]
+```
+I've created a basic HTTP server...
+```
+
+------------------
+```
+
+Key formatting details:
+
+- **Role headings** (`#### 用户` / `#### AI`) appear when the speaker changes
+- **Tool calls** show `[tool]:ToolName` with input/output in code fences
+- **AI text responses** show `[答复]` label
+- **Adaptive fencing**: backtick count adjusts automatically to avoid conflicts with content containing backticks
+- **XML stripping**: internal `<system-reminder>`, `<ide_opened_file>`, and `<ide_selection>` tags are removed
+- **Content limits**: text truncated to 500 chars, Bash commands to 120 chars, filenames to 30 chars
 
 ## Development
 
@@ -103,6 +124,12 @@ npm run build
 npm test
 ```
 
+### Type Check
+
+```bash
+npm run typecheck
+```
+
 ### Local Testing
 
 To test the plugin locally before publishing:
@@ -110,6 +137,18 @@ To test the plugin locally before publishing:
 ```bash
 claude plugin add /path/to/claude-session-recorder
 ```
+
+## Architecture
+
+```
+JSONL file → parseJsonl() → extractLogEntries() → extractSessionInfo() → formatTranscriptLog() → generateFilename() → .md file
+```
+
+- `src/parser.ts` — JSONL parsing + two-pass log entry extraction (first pass collects tool_results, second pass builds ordered entries)
+- `src/formatter.ts` — Markdown generation, filename sanitization, adaptive code fencing
+- `src/utils.ts` — Truncation, XML tag cleaning, timestamp formatting
+- `src/types.ts` — Type definitions (JsonlEntry, ContentBlock, LogEntry, SessionInfo)
+- `src/summarize.ts` — Main entry point (hook mode from stdin + CLI mode with flags)
 
 ## License
 
