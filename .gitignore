@@ -12,6 +12,7 @@ coverage/
 .vscode/
 *.swp
 *.swo
+*.code-workspace
 
 #Agents
 .claude/

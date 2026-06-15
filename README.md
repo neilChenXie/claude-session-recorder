@@ -21,14 +21,14 @@ claude plugin add /path/to/claude-session-recorder
 ### From GitHub (recommended for distribution)
 
 ```bash
-claude plugin add https://github.com/chenxie121/claude-session-recorder
+claude plugin add https://github.com/neilneilChenXie/claude-session-recorder/claude-session-recorder
 ```
 
 Or via marketplace:
 
 ```bash
-claude plugin marketplace add https://github.com/chenxie121/claude-session-recorder
-claude plugin install claude-session-recorder
+claude plugin marketplace add https://github.com/neilneilChenXie/claude-session-recorder/claude-session-recorder
+claude plugin install claude-sessionclaude-session-recorder
 ```
 
 ### From npm (after publishing)
