@@ -13,12 +13,7 @@
         "name": "Chen Xie",
         "email": "chenxie121@gmail.com"
       },
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/neilChenXie/claude-session-recorder.git",
-        "path": ".",
-        "ref": "main"
-      }
+      "source": "./"
     }
   ]
 }

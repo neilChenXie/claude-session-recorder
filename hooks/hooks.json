@@ -1,14 +1,14 @@
 {
   "description": "Auto-save session transcript summary on exit",
   "hooks": {
-    "SessionEnd": [
+    "Stop": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/summarize.js\"",
-            "timeout": 30
+            "async": true
           }
         ]
       }
