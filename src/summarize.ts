@@ -1,5 +1,5 @@
 // src/summarize.ts
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync, readdirSync } from "fs";
 import { join, dirname, basename } from "path";
 import { stdin } from "process";
 
@@ -10,6 +10,42 @@ import type { JsonlEntry } from "./types.js";
 import { parseJsonl, extractLogEntries } from "./parser.js";
 import { formatTranscriptLog, generateFilename, extractSessionInfo } from "./formatter.js";
 import { formatDate } from "./utils.js";
+
+function computeShortSid(sessionId: string): string {
+  return sessionId.slice(0, 8).toLowerCase();
+}
+
+function findExistingFileByShortSid(outputDir: string, shortSid: string): string | null {
+  if (!existsSync(outputDir)) return null;
+  const files = readdirSync(outputDir);
+  const match = files.find(f => f.includes(`-${shortSid}-`) && f.endsWith(".md"));
+  return match ? join(outputDir, match) : null;
+}
+
+function inferProjectDirFromJsonlPath(jsonlPath: string): string | null {
+  // Path pattern: ~/.claude/projects/<encoded-dir>/<session-id>.jsonl
+  // encoded-dir replaces / with - in the project absolute path
+  const homeDir = process.env.HOME || "";
+  const claudeProjectsPrefix = join(homeDir, ".claude", "projects");
+
+  // Check if jsonlPath is under ~/.claude/projects/
+  if (!jsonlPath.startsWith(claudeProjectsPrefix)) return null;
+
+  // Extract the encoded directory name between ~/.claude/projects/ and the filename
+  const relativePath = jsonlPath.slice(claudeProjectsPrefix.length + 1);
+  // relativePath is like "encoded-dir/session-id.jsonl"
+  const encodedDir = relativePath.split("/")[0];
+
+  // Decode: replace - back to /
+  // Note: this is imperfect — original paths containing - (like /my-project) can't be
+  // perfectly decoded. We validate the result with existsSync.
+  const decodedPath = "/" + encodedDir.replace(/-/g, "/");
+
+  if (existsSync(decodedPath)) {
+    return decodedPath;
+  }
+  return null;
+}
 
 export function generateTranscriptLog(
   filepath: string,
@@ -35,6 +71,8 @@ export function generateTranscriptLog(
     process.env.CLAUDE_SESSION_ID ||
     basename(filepath).replace(/\.jsonl$/, "");
 
+  const shortSid = computeShortSid(finalSessionId);
+
   // Extract session info
   const sessionInfo = extractSessionInfo(entries, finalSessionId, filepath);
 
@@ -46,13 +84,23 @@ export function generateTranscriptLog(
     sessionInfo.title
   );
 
-  // Generate filename
-  const date = formatDate(entries[0]?.timestamp || "");
-  const filename = generateFilename(date, sessionInfo.title);
-  const outputPath = join(outputDir, filename);
-
   // Ensure output directory exists
   mkdirSync(outputDir, { recursive: true });
+
+  // Check for existing file with same shortSid
+  const existingFile = findExistingFileByShortSid(outputDir, shortSid);
+
+  if (existingFile) {
+    // Overwrite existing file
+    writeFileSync(existingFile, content, "utf-8");
+    console.log(`Transcript log saved to: ${existingFile}`);
+    return existingFile;
+  }
+
+  // Generate new filename
+  const date = formatDate(entries[0]?.timestamp || "");
+  const filename = generateFilename(date, shortSid, sessionInfo.title);
+  const outputPath = join(outputDir, filename);
 
   // Write file
   writeFileSync(outputPath, content, "utf-8");
@@ -173,7 +221,15 @@ export async function main(): Promise<void> {
     if (projectDir) {
       outputDir = join(projectDir, "conversations");
     } else {
-      outputDir = join(dirname(jsonlFile), "conversations");
+      // Try to infer project directory from JSONL file path
+      const inferredDir = inferProjectDirFromJsonlPath(jsonlFile);
+      if (inferredDir) {
+        outputDir = join(inferredDir, "conversations");
+      } else {
+        // Last resort: use JSONL file's directory
+        console.warn("Warning: Could not infer project directory from JSONL path. Output will be placed next to the transcript file.");
+        outputDir = join(dirname(jsonlFile), "conversations");
+      }
     }
   }
 

@@ -47,15 +47,15 @@ describe("generateTranscriptLog", () => {
     expect(content).toMatch(/\d{2}:\d{2}:\d{2}/);
   });
 
-  it("generates file with correct naming convention", () => {
+  it("generates file with correct naming convention including shortSid", () => {
     const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
     const result = generateTranscriptLog(fixturePath, outputDir, "test-session-123");
 
     expect(result).not.toBeNull();
     const filename = result!.split("/").pop()!;
 
-    // Should be: YYYY-MM-DD-first-user-message.md
-    expect(filename).toMatch(/^\d{4}-\d{2}-\d{2}-.+\.md$/);
+    // Should be: YYYY-MM-DD-<shortSid>-first-user-message.md
+    expect(filename).toMatch(/^\d{4}-\d{2}-\d{2}-test-ses-.+\.md$/);
   });
 
   it("returns null for empty transcript", () => {
@@ -97,6 +97,50 @@ describe("generateTranscriptLog", () => {
 
     // Check for [答复] marker
     expect(content).toContain("[答复]");
+  });
+});
+
+describe("generateTranscriptLog file stability", () => {
+  const stabilityOutputDir = join(__dirname, ".test-output-stability");
+
+  beforeEach(() => {
+    mkdirSync(stabilityOutputDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(stabilityOutputDir, { recursive: true, force: true });
+  });
+
+  it("overwrites existing file when same shortSid is used", () => {
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+
+    // First call — creates file
+    const result1 = generateTranscriptLog(fixturePath, stabilityOutputDir, "f37da122-abcde-full-session-id");
+    expect(result1).not.toBeNull();
+
+    // Second call — should overwrite same file
+    const result2 = generateTranscriptLog(fixturePath, stabilityOutputDir, "f37da122-abcde-full-session-id");
+    expect(result2).not.toBeNull();
+    expect(result2!).toBe(result1!); // Same path = same file
+  });
+
+  it("creates different files for different session IDs", () => {
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+
+    const result1 = generateTranscriptLog(fixturePath, stabilityOutputDir, "aaaa1111-session-one");
+    const result2 = generateTranscriptLog(fixturePath, stabilityOutputDir, "bbbb2222-session-two");
+
+    expect(result1).not.toBeNull();
+    expect(result2).not.toBeNull();
+    expect(result1!).not.toBe(result2!); // Different paths
+  });
+
+  it("includes shortSid in filename", () => {
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+    const result = generateTranscriptLog(fixturePath, stabilityOutputDir, "f37da122-full-id");
+    expect(result).not.toBeNull();
+    const filename = result!.split("/").pop()!;
+    expect(filename).toMatch(/^\d{4}-\d{2}-\d{2}-f37da122-.+\.md$/);
   });
 });
 
@@ -173,6 +217,47 @@ describe("CLI main function", () => {
 
     expect(result).toContain("Transcript log saved to:");
     expect(existsSync(testOutputDir)).toBe(true);
+  });
+
+  it("infers project directory from JSONL path encoding", () => {
+    const binPath = join(__dirname, "..", "dist", "summarize.js");
+    const fixturePath = join(__dirname, "fixtures", "normal-session.jsonl");
+
+    // Create a real temp directory that can be correctly decoded (no hyphens in path)
+    // Use /tmp which decodes correctly from the encoded form
+    const tmpDir = join(outputDir, "infer-test");
+    mkdirSync(tmpDir, { recursive: true });
+
+    // Simulate ~/.claude/projects/<encoded-dir>/session.jsonl
+    // encoded-dir for /tmp would be "-tmp"
+    const fakeHomeDir = join(outputDir, "infer-fake-home");
+    const fakeClaudeProjectsDir = join(fakeHomeDir, ".claude", "projects");
+    const encodedDir = "-tmp";  // /tmp encoded as -tmp (no hyphens in "tmp")
+    const fakeProjectDir = join(fakeClaudeProjectsDir, encodedDir);
+    mkdirSync(fakeProjectDir, { recursive: true });
+
+    // Copy fixture to fake location
+    const fakeJsonlPath = join(fakeProjectDir, "test-session.jsonl");
+    const fixtureContent = readFileSync(fixturePath, "utf-8");
+    writeFileSync(fakeJsonlPath, fixtureContent, "utf-8");
+
+    // /tmp exists on macOS, so inferProjectDirFromJsonlPath should decode
+    // "-tmp" -> "/tmp" and verify it exists.
+    // Verify the inference logic by checking the output path
+    // is NOT under the fake .claude/projects directory.
+    const result = execSync(
+      `node "${binPath}" --file "${fakeJsonlPath}"`,
+      {
+        encoding: "utf-8",
+        env: { ...process.env, HOME: fakeHomeDir, CLAUDE_SESSION_ID: "test-infer-path" },
+      }
+    );
+
+    // If inference works, output goes to /tmp/conversations (not fake dir)
+    // If inference fails (decoded path doesn't exist), output goes to dirname fallback
+    // Either way, the output path should NOT contain the fake home's .claude/projects
+    // /tmp always exists on macOS/Linux, so inference should succeed.
+    expect(result).not.toContain(fakeClaudeProjectsDir);
   });
 
   it("uses CLAUDE_PROJECT_DIR for output when --output not specified", () => {

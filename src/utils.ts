@@ -16,30 +16,32 @@ export function formatTimestamp(isoTimestamp: string): string {
   if (!isoTimestamp) return "";
   const date = new Date(isoTimestamp);
   if (isNaN(date.getTime())) return "";
-  const hours = String(date.getUTCHours()).padStart(2, "0");
-  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
 }
 
 export function formatDate(isoTimestamp: string): string {
   if (!isoTimestamp) {
-    return new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   }
   const date = new Date(isoTimestamp);
   if (isNaN(date.getTime())) {
     return "";
   }
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 export function formatDateTime(isoTimestamp: string): string {
   if (!isoTimestamp) {
-    return new Date().toISOString().replace("T", " ").slice(0, 19);
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
   }
   const date = new Date(isoTimestamp);
   if (isNaN(date.getTime())) {
     return "";
   }
-  return date.toISOString().replace("T", " ").slice(0, 19);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
 }

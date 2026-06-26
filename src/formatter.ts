@@ -2,7 +2,7 @@
 import type { JsonlEntry, LogEntry } from "./types.js";
 import { formatTimestamp, formatDateTime, cleanXmlTags } from "./utils.js";
 
-export function generateFilename(date: string, title: string): string {
+export function generateFilename(date: string, shortSid: string, title: string): string {
   let safeTitle = title;
   if (!safeTitle) {
     safeTitle = "Claude-Code-Session";
@@ -16,7 +16,7 @@ export function generateFilename(date: string, title: string): string {
     // Strip leading/trailing hyphens
     safeTitle = safeTitle.replace(/^-+|-+$/g, "");
   }
-  return `${date}-${safeTitle}.md`;
+  return `${date}-${shortSid}-${safeTitle}.md`;
 }
 
 export function extractSessionInfo(
@@ -25,7 +25,7 @@ export function extractSessionInfo(
   transcriptPath: string
 ): { sessionId: string; created: string; title: string } {
   let title = "Claude Code Session";
-  let created = new Date().toISOString().replace("T", " ").slice(0, 19);
+  let created = formatDateTime("");
 
   // Find first user message for title
   for (const entry of entries) {

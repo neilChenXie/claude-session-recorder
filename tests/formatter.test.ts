@@ -1,6 +1,7 @@
 // tests/formatter.test.ts
 import { describe, it, expect } from "vitest";
 import { formatTranscriptLog, generateFilename, extractSessionInfo } from "../src/formatter.js";
+import { formatTimestamp, formatDateTime } from "../src/utils.js";
 import type { LogEntry, JsonlEntry } from "../src/types.js";
 
 describe("formatTranscriptLog", () => {
@@ -13,7 +14,7 @@ describe("formatTranscriptLog", () => {
     expect(result).toContain("# 2026-06-11 10:00:00-Test Title");
     expect(result).toContain("session id：session-123");
     expect(result).toContain("#### 用户");
-    expect(result).toContain("10:00:00 Hello");
+    expect(result).toContain(`${formatTimestamp("2026-06-11T10:00:00Z")} Hello`);
   });
 
   it("formats tool_use with input and output", () => {
@@ -30,7 +31,7 @@ describe("formatTranscriptLog", () => {
     const result = formatTranscriptLog(entries, "session-123", "2026-06-11 10:00:00", "Test");
 
     expect(result).toContain("#### AI");
-    expect(result).toContain("10:00:05 [tool]:Read");
+    expect(result).toContain(`${formatTimestamp("2026-06-11T10:00:05Z")} [tool]:Read`);
     expect(result).toContain("file_path: /project/file.ts");
     expect(result).toContain("file contents");
   });
@@ -45,7 +46,7 @@ describe("formatTranscriptLog", () => {
     ];
     const result = formatTranscriptLog(entries, "session-123", "2026-06-11 10:00:00", "Test");
 
-    expect(result).toContain("10:00:10 [答复]");
+    expect(result).toContain(`${formatTimestamp("2026-06-11T10:00:10Z")} [答复]`);
     expect(result).toContain("I can help you with that.");
   });
 
@@ -140,25 +141,25 @@ describe("formatTranscriptLog", () => {
 });
 
 describe("generateFilename", () => {
-  it("generates filename with date and title", () => {
-    const result = generateFilename("2026-06-11", "Help me create a server");
-    expect(result).toBe("2026-06-11-Help-me-create-a-server.md");
+  it("generates filename with date, shortSid, and title", () => {
+    const result = generateFilename("2026-06-11", "f37da122", "Help me create a server");
+    expect(result).toBe("2026-06-11-f37da122-Help-me-create-a-server.md");
   });
 
-  it("truncates long titles to 30 chars", () => {
+  it("truncates long titles to 30 chars with shortSid present", () => {
     const longTitle = "This is a very long title that should be truncated";
-    const result = generateFilename("2026-06-11", longTitle);
-    expect(result).toBe("2026-06-11-This-is-a-very-long-title-that.md");
+    const result = generateFilename("2026-06-11", "f37da122", longTitle);
+    expect(result).toBe("2026-06-11-f37da122-This-is-a-very-long-title-that.md");
   });
 
-  it("replaces special characters in title", () => {
-    const result = generateFilename("2026-06-11", "Hello/World\\Test:File");
-    expect(result).toBe("2026-06-11-Hello-World-Test-File.md");
+  it("replaces special characters in title with shortSid", () => {
+    const result = generateFilename("2026-06-11", "f37da122", "Hello/World\\Test:File");
+    expect(result).toBe("2026-06-11-f37da122-Hello-World-Test-File.md");
   });
 
-  it("uses default title if empty", () => {
-    const result = generateFilename("2026-06-11", "");
-    expect(result).toBe("2026-06-11-Claude-Code-Session.md");
+  it("uses default title if empty with shortSid", () => {
+    const result = generateFilename("2026-06-11", "f37da122", "");
+    expect(result).toBe("2026-06-11-f37da122-Claude-Code-Session.md");
   });
 });
 
@@ -189,16 +190,45 @@ describe("extractSessionInfo", () => {
     expect(info.title).toBe("Claude Code Session");
   });
 
-  it("extracts timestamp from first entry", () => {
+  it("extracts timestamp from first entry in local timezone", () => {
+    const utcTimestamp = "2026-06-11T10:30:45Z";
     const entries: JsonlEntry[] = [
       {
         type: "user",
         message: { role: "user", content: [{ type: "text", text: "Test" }] },
-        timestamp: "2026-06-11T10:30:45Z",
+        timestamp: utcTimestamp,
       },
     ];
     const info = extractSessionInfo(entries, "session-123", "/path/to/transcript.jsonl");
 
-    expect(info.created).toBe("2026-06-11 10:30:45");
+    // formatDateTime converts UTC to local timezone
+    const expectedDate = new Date(utcTimestamp);
+    const expected = `${expectedDate.getFullYear()}-${String(expectedDate.getMonth() + 1).padStart(2, "0")}-${String(expectedDate.getDate()).padStart(2, "0")} ${String(expectedDate.getHours()).padStart(2, "0")}:${String(expectedDate.getMinutes()).padStart(2, "0")}:${String(expectedDate.getSeconds()).padStart(2, "0")}`;
+    expect(info.created).toBe(expected);
+  });
+
+  it("uses local timezone for created fallback when no timestamp", () => {
+    const entries: JsonlEntry[] = [
+      {
+        type: "user",
+        message: { role: "user", content: [{ type: "text", text: "Test" }] },
+        // no timestamp field
+      },
+    ];
+    const info = extractSessionInfo(entries, "session-123", "/path/to/transcript.jsonl");
+
+    // Fallback should use local time via formatDateTime(""), not UTC
+    const expected = formatDateTime("");
+    // Allow 1-second drift since both are computed at slightly different times
+    // Compare by parsing both as local dates
+    const createdParts = info.created.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+    const expectedParts = expected.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+    expect(createdParts).not.toBeNull();
+    expect(expectedParts).not.toBeNull();
+    // Year, month, date, hours should match (seconds may differ by 1)
+    expect(createdParts![1]).toBe(expectedParts![1]); // year
+    expect(createdParts![2]).toBe(expectedParts![2]); // month
+    expect(createdParts![3]).toBe(expectedParts![3]); // day
+    expect(createdParts![4]).toBe(expectedParts![4]); // hour
   });
 });

@@ -49,12 +49,18 @@ describe("cleanXmlTags", () => {
 });
 
 describe("formatTimestamp", () => {
-  it("formats ISO timestamp to HH:mm:ss", () => {
-    expect(formatTimestamp("2026-06-11T10:30:45Z")).toBe("10:30:45");
+  it("uses local timezone instead of UTC", () => {
+    const iso = "2026-06-11T10:30:45Z";
+    const date = new Date(iso);
+    const expected = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+    expect(formatTimestamp(iso)).toBe(expected);
   });
 
-  it("pads single digits with zeros", () => {
-    expect(formatTimestamp("2026-06-11T09:05:03Z")).toBe("09:05:03");
+  it("pads single digits with zeros using local timezone", () => {
+    const iso = "2026-06-11T09:05:03Z";
+    const date = new Date(iso);
+    const expected = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+    expect(formatTimestamp(iso)).toBe(expected);
   });
 
   it("returns empty string for empty input", () => {
@@ -67,13 +73,17 @@ describe("formatTimestamp", () => {
 });
 
 describe("formatDate", () => {
-  it("extracts YYYY-MM-DD from ISO timestamp", () => {
-    expect(formatDate("2026-06-11T10:30:45Z")).toBe("2026-06-11");
+  it("formats ISO timestamp to local YYYY-MM-DD", () => {
+    const iso = "2026-06-11T10:30:45Z";
+    const date = new Date(iso);
+    const expected = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    expect(formatDate(iso)).toBe(expected);
   });
 
-  it("returns today for empty input", () => {
-    const today = new Date().toISOString().slice(0, 10);
-    expect(formatDate("")).toBe(today);
+  it("returns today for empty input using local timezone", () => {
+    const now = new Date();
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    expect(formatDate("")).toBe(expected);
   });
 
   it("returns empty string for invalid date", () => {
@@ -82,8 +92,11 @@ describe("formatDate", () => {
 });
 
 describe("formatDateTime", () => {
-  it("formats ISO timestamp to YYYY-MM-DD HH:mm:ss", () => {
-    expect(formatDateTime("2026-06-11T10:30:45Z")).toBe("2026-06-11 10:30:45");
+  it("formats ISO timestamp to local YYYY-MM-DD HH:mm:ss", () => {
+    const iso = "2026-06-11T10:30:45Z";
+    const date = new Date(iso);
+    const expected = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
+    expect(formatDateTime(iso)).toBe(expected);
   });
 
   it("returns now for empty input", () => {
