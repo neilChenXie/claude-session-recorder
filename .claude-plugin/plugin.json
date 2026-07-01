@@ -4,5 +4,8 @@
   "author": {
     "name": "Chen Xie",
     "email": "chenxie121@gmail.com"
+  },
+  "scripts": {
+    "postinstall": "npm install && npm run build"
   }
 }
